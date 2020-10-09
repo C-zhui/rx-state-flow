@@ -16,7 +16,7 @@ const initDerivation = { count2: 0, count3: 0 as number | string };
 const stateConfig: StateConfig<typeof initState, typeof initDerivation> = {
   state: initState,
   derivation: initDerivation,
-  clearOnZeroRef: true,
+  // clearOnZeroRef: true,
   flows: [
     ({ state$, setState }) =>
       state$.pipe(

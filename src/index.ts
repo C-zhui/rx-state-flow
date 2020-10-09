@@ -8,18 +8,8 @@ import {
   share,
   auditTime,
 } from "rxjs/operators";
-import { useContext, useEffect, useState } from "react";
-import {
-  assign,
-  defaults,
-  eq,
-  identity,
-  isEqual,
-  isFunction,
-  memoize,
-  noop,
-  once,
-} from "lodash-es";
+import _ from "lodash";
+import { useEffect, useState, useContext } from "react";
 import React from "react";
 
 export interface FlowType<S extends object = {}, D extends object = {}> {
@@ -48,32 +38,26 @@ const defaultConfig: StateConfig = {
 
 const createStateFlow = <S extends object = {}, D extends object = {}>(
   config: Partial<StateConfig<S, D>> = {},
-  name = ""
+  name = "",
 ) => {
   type UnionType = S & D;
 
-  config = defaults({}, config, defaultConfig);
+  config = _.defaults({}, config, defaultConfig);
 
-  const initState: UnionType = assign({}, config.state, config.derivation);
+  const initState: UnionType = _.assign({}, config.state, config.derivation);
   type PartialType = Partial<UnionType>;
 
   const state$ = new BehaviorSubject(initState);
 
   const stateAudit20$ = state$.pipe(auditTime(20), share());
 
-  const stateRef = { current: initState };
-  const setState = (
-    partialState: PartialType | ((state: UnionType) => PartialType)
-  ) => {
-    const newState = assign(
+  const setState = (partialState: PartialType | ((state: UnionType) => PartialType)) => {
+    const newState = _.assign(
       {},
       state$.value,
-      isFunction(partialState) ? partialState(state$.value) : partialState
+      _.isFunction(partialState) ? partialState(state$.value) : partialState,
     );
-    if (!isEqual(newState, state$.value)) {
-      state$.next(newState);
-      stateRef.current = newState;
-    }
+    if (!_.isEqual(newState, state$.value)) state$.next(newState);
   };
 
   const effect = {
@@ -86,9 +70,9 @@ const createStateFlow = <S extends object = {}, D extends object = {}>(
             catchError((e) => {
               console.error(e);
               return of(null);
-            })
+            }),
           )
-          .subscribe(noop);
+          .subscribe(_.noop);
       }
     },
     stop() {
@@ -106,7 +90,7 @@ const createStateFlow = <S extends object = {}, D extends object = {}>(
       effect.begin();
     }
     refCount++;
-    return once(() => {
+    return _.once(() => {
       refCount--;
     });
   };
@@ -114,36 +98,31 @@ const createStateFlow = <S extends object = {}, D extends object = {}>(
   return {
     name,
     initState,
-    stateRef,
     state$: stateAudit20$,
     setState,
     getRefCount,
     connect,
-    stopEffect: () => effect.stop(),
+    stop: () => effect.stop(),
   };
 };
 
 // 操作符：用于选择一个观察值
 export const select = <T, R>(mapper?: (a: T) => R, deep = true) => (
-  source: Observable<T>
+  source: Observable<T>,
 ): Observable<R> =>
-  source.pipe(
-    map(mapper || identity),
-    distinctUntilChanged(deep ? isEqual : eq)
-  );
+  source.pipe(map(mapper || _.identity), distinctUntilChanged(deep ? _.isEqual : _.eq));
 
 // 操作符：用于简化设置属性用的
 export const emitMap = <T, R>(
-  mapper: (a: T) => R = identity,
-  receiver: (b: R) => any = noop
-) => (source: Observable<T>): Observable<T> =>
-  source.pipe(tap((a) => receiver(mapper(a))));
+  mapper: (a: T) => R = _.identity,
+  receiver: (b: R) => any = _.noop,
+) => (source: Observable<T>): Observable<T> => source.pipe(tap((a) => receiver(mapper(a))));
 
 export const useStateFlow = <S extends object = {}, D extends object = {}>(
-  config: Partial<StateConfig<S, D>>
+  config: Partial<StateConfig<S, D>>,
 ) => {
   const [{ state$, connect, ...api }] = useState(() => createStateFlow(config));
-  const [state, setState] = useState(api.stateRef.current);
+  const [state, setState] = useState(api.initState);
 
   useEffect(() => {
     const sub = state$.subscribe(setState);
@@ -161,26 +140,23 @@ export const useStateFlow = <S extends object = {}, D extends object = {}>(
 };
 
 export const createShareStateRoot = () =>
-  memoize(createStateFlow, (config: StateConfig, name: string) => {
+  _.memoize(createStateFlow, (config: StateConfig) => {
     if (!config[configIdSymbol]) {
       config[configIdSymbol] = `${Math.random()}`.slice(2);
     }
-    return config[configIdSymbol] + `#${name}`;
+    return config[configIdSymbol];
   });
 
 export const ShareRootContext = React.createContext(createShareStateRoot());
 
 export const useShareStateFlow = <S extends object = {}, D extends object = {}>(
   config: Partial<StateConfig<S, D>> = {},
-  name = ""
+  name = "",
 ) => {
   const getShareStateFlow = useContext(ShareRootContext);
+  const [{ state$, connect, ...api }] = useState(() => getShareStateFlow(config, name));
 
-  const [{ state$, connect, ...api }] = useState(() =>
-    getShareStateFlow(config, name)
-  );
-
-  const [state, setState] = useState(api.stateRef.current);
+  const [state, setState] = useState(api.initState);
 
   useEffect(() => {
     const sub = state$.subscribe(setState);
@@ -189,8 +165,7 @@ export const useShareStateFlow = <S extends object = {}, D extends object = {}>(
       sub.unsubscribe();
       disconnect();
       if (config.clearOnZeroRef && api.getRefCount() === 0) {
-        console.log("stop");
-        api.stopEffect();
+        api.stop();
         getShareStateFlow.cache.delete(config[configIdSymbol] + `#${name}`);
       }
     };

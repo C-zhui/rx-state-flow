@@ -2,7 +2,9 @@
   "name": "rx-state-flow",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "sideEffects": false,
   "dependencies": {
     "lodash-es": "^4.17.15",
     "rxjs": "^6.6.3"
